@@ -9,9 +9,13 @@ open Microsoft.Azure.WebJobs.Extensions.Http
 open Microsoft.AspNetCore.Http
 open Newtonsoft.Json
 open Microsoft.Extensions.Logging
+open Giraffe.ViewEngine
 
 
 module HttpTrigger =
+    open Microsoft.AspNetCore.Http
+    open System.Net.Http
+    open Microsoft.AspNetCore.Mvc
     // Define a nullable container to deserialize into.
     [<AllowNullLiteral>]
     type NameContainer() =
@@ -143,22 +147,50 @@ module HttpTrigger =
     let (|Date|_|)   = parseDate
 
     [<FunctionName("HttpTrigger")>]
-    let run ([<HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)>]req: HttpRequest) (log: ILogger) =
+    let run ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)>]req: HttpRequest) (log: ILogger) =
         async {
             log.LogInformation("F# HTTP trigger function processed a request.")
 
-            let str = 
+            let s = 
                 if req.Query.ContainsKey("date") then (req.Query.["date"].[0]) else ""
             let dates = 
-                match str with
+                match s with
                 |YYYY d -> Array.init 366 ( fun i -> d.AddDays( float i))|> Array.filter( fun v -> v < d.AddYears 1 )
                 |YYYYMM d -> Array.init 31 ( fun i -> d.AddDays(float i)) |> Array.filter( fun v -> v < d.AddMonths 1 )
                 |Date d -> [| d |]
                 | _ -> 
                     [| TimeZoneInfo.ConvertTimeFromUtc( DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("China Standard Time")) |]
             
-            let responseMessage =             
-                dates |> Array.map( fun d -> $"{d} {getFull d}" )|> String.concat "\n"
-
-            return OkObjectResult(responseMessage) :> IActionResult
+            let zh = CultureInfo("zh-CN")
+            
+            // let responseMessage =             
+            //     dates |> Array.map( fun d -> $"{d} {getFull d}" )|> String.concat "\n"
+            let view =
+                html [_lang "zh-CN"] [
+                    head [ ] [ 
+                        link [ _rel "stylesheet"; _href "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"]
+                        title [] [] 
+                        meta [_charset "UTF-8"]
+                        ]
+                    body [] [ 
+                        table [_class "table "] [
+                            yield!
+                                dates 
+                                |> Array.toList 
+                                |> List.map(
+                                    fun d -> 
+                                    tr [] [
+                                        td [] [str (d.ToString("公元yyyy年M月d日dddd tth:mm", zh))] 
+                                        td [] [str (getFull d) ] 
+                                    ])
+                        ]
+                    ]
+                ]
+            let responseMessage = RenderView.AsString.htmlDocument view 
+            let res = ContentResult()
+            res.Content <- responseMessage
+            res.ContentType <- "text/html; charset=UTF-8" 
+            
+            // return OkObjectResult(responseMessage) :> IActionResult
+            return res :> IActionResult
         } |> Async.StartAsTask
