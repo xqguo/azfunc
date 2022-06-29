@@ -143,23 +143,11 @@ module HttpTrigger =
 
     // active patterns for try-parsing strings
     let (|YYYY|_|)   = parseDateExact "yyyy"
-    let (|YYYYMM|_|)   = parseDateExact "yyyyMM"
+    let (|YYYYMM|_|)   = parseDateExact "yyyy-M"
     let (|Date|_|)   = parseDate
 
-    [<FunctionName("HttpTrigger")>]
-    let run ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)>]req: HttpRequest) (log: ILogger) =
+    let fromDates (dates:DateTime[] ) =
         async {
-            log.LogInformation("F# HTTP trigger function processed a request.")
-
-            let s = 
-                if req.Query.ContainsKey("date") then (req.Query.["date"].[0]) else ""
-            let dates = 
-                match s with
-                |YYYY d -> Array.init 366 ( fun i -> d.AddDays( float i))|> Array.filter( fun v -> v < d.AddYears 1 )
-                |YYYYMM d -> Array.init 31 ( fun i -> d.AddDays(float i)) |> Array.filter( fun v -> v < d.AddMonths 1 )
-                |Date d -> [| d |]
-                | _ -> 
-                    [| TimeZoneInfo.ConvertTimeFromUtc( DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("China Standard Time")) |]
             
             let zh = CultureInfo("zh-CN")
             
@@ -194,3 +182,17 @@ module HttpTrigger =
             // return OkObjectResult(responseMessage) :> IActionResult
             return res :> IActionResult
         } |> Async.StartAsTask
+
+    [<FunctionName("cals")>]
+    let cals ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "cal/{dt}" )>]req: HttpRequest) dt (log: ILogger) =
+        match dt with
+        |YYYY d -> Array.init 366 ( fun i -> d.AddDays( float i))|> Array.filter( fun v -> v < d.AddYears 1 )
+        |YYYYMM d -> Array.init 31 ( fun i -> d.AddDays(float i)) |> Array.filter( fun v -> v < d.AddMonths 1 )
+        |Date d -> [| d |]
+        | _ -> [| TimeZoneInfo.ConvertTimeFromUtc( DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("China Standard Time")) |]
+        |> fromDates 
+
+    [<FunctionName("caltoday")>]
+    let caltoday ([<HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "cal" )>]req: HttpRequest) (log: ILogger) =
+        [| TimeZoneInfo.ConvertTimeFromUtc( DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("China Standard Time")) |]
+        |> fromDates 
